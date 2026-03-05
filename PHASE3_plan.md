@@ -598,21 +598,31 @@ enabled = true
 - [ ] 编写单元测试
 
 ### Phase 3.3: 文件工具集
-- [ ] 设计文件工具配置结构
-- [ ] 实现路径安全检查
-- [ ] 实现 10 个文件工具
-  - [ ] `read_file`
-  - [ ] `write_file`
-  - [ ] `list_directory`
-  - [ ] `search_file`
-  - [ ] `move_file`
-  - [ ] `move_directory`
-  - [ ] `delete_file`
-  - [ ] `delete_directory`
-  - [ ] `create_directory`
-  - [ ] `search_and_replace`
-- [ ] 集成读取大小限制
-- [ ] 编写单元测试
+- [x] 设计文件工具配置结构
+- [x] 实现路径安全检查
+- [x] 实现 10 个文件工具
+  - [x] `read_file`
+  - [x] `write_file`
+  - [x] `list_directory`
+  - [x] `search_file`
+  - [x] `move_file`
+  - [x] `move_directory`
+  - [x] `delete_file`
+  - [x] `delete_directory`
+  - [x] `create_directory`
+  - [x] `search_and_replace`
+- [x] 集成读取大小限制
+- [x] 编写单元测试
+
+**Phase 3.3 已完成** ✅
+- 实现了全部 10 个文件工具
+- 路径安全检查（路径遍历防护、目录白名单）
+- 完整的单元测试（9 个测试）
+- 所有 62+9+3 = 74 个测试通过
+- `search_and_replace` 使用 SEARCH/REPLACE 块格式（单个 `diff` 参数）
+- `search_file` 支持正则表达式
+
+详细内容请参考 [PHASE3_3.md](./PHASE3_3.md)
 
 ### Phase 3.4: Checkpoint 集成
 - [ ] 添加 agentfs 依赖
@@ -682,18 +692,18 @@ walkdir = "2.5"
 - [ ] SSE 流式输出正常
 
 ### Phase 3.3: 文件工具集
-- [ ] `read_file` 正常（含截断）
-- [ ] `write_file` 正常
-- [ ] `list_directory` 正常
-- [ ] `search_file` 正常
-- [ ] `move_file` 正常
-- [ ] `move_directory` 正常
-- [ ] `delete_file` 正常
-- [ ] `delete_directory` 正常
-- [ ] `create_directory` 正常
-- [ ] `search_and_replace` 正常
-- [ ] 路径遍历防护生效
-- [ ] 目录限制生效
+- [x] `read_file` 正常（含截断）
+- [x] `write_file` 正常
+- [x] `list_directory` 正常
+- [x] `search_file` 正常
+- [x] `move_file` 正常
+- [x] `move_directory` 正常
+- [x] `delete_file` 正常
+- [x] `delete_directory` 正常
+- [x] `create_directory` 正常
+- [x] `search_and_replace` 正常
+- [x] 路径遍历防护生效
+- [x] 目录限制生效
 
 ### Phase 3.4: Checkpoint 集成
 - [ ] Checkpoint 创建正常

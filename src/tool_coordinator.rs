@@ -6,6 +6,7 @@ use crate::error::{Error, Result};
 use crate::llm::{ChatMessage, ChatTool, LlmProvider};
 use crate::mcp::{ExecutionResult, McpServerManager, ToolExecutor};
 use crate::models::{Message, MessageRole, Tool, ToolCall, ToolResult};
+use crate::tools::{LocalToolRegistry, ToolContext};
 use async_trait::async_trait;
 use serde_json::Value;
 use std::sync::Arc;
@@ -54,6 +55,8 @@ pub struct ToolCoordinator {
     llm_provider: Arc<dyn LlmProvider>,
     mcp_server_manager: Arc<Mutex<McpServerManager>>,
     tool_executor: ToolExecutor,
+    local_tool_registry: Arc<LocalToolRegistry>,
+    config: Arc<crate::config::Config>,
     /// 最大工具调用轮数
     max_iterations: usize,
 }
@@ -64,11 +67,15 @@ impl ToolCoordinator {
         llm_provider: Arc<dyn LlmProvider>,
         mcp_server_manager: Arc<Mutex<McpServerManager>>,
         tool_executor: ToolExecutor,
+        local_tool_registry: Arc<LocalToolRegistry>,
+        config: Arc<crate::config::Config>,
     ) -> Self {
         Self {
             llm_provider,
             mcp_server_manager,
             tool_executor,
+            local_tool_registry,
+            config,
             max_iterations: 10,
         }
     }
@@ -213,18 +220,71 @@ impl ToolCoordinator {
 
     /// 获取可用工具列表
     async fn get_available_tools(&self) -> Vec<(String, Tool)> {
+        let mut tools = Vec::new();
+
+        // 添加 MCP 工具
         let manager = self.mcp_server_manager.lock().await;
-        manager.all_tools()
+        tools.extend(manager.all_tools());
+
+        // 添加本地工具
+        let local_tools = self.local_tool_registry.list_tools();
+        for tool in local_tools {
+            tools.push((tool.name.clone(), tool));
+        }
+
+        tools
     }
 
     /// 执行单个工具调用
     async fn execute_tool(&self, tool_call: ToolCall) -> Result<ExecutionResult> {
         info!(tool_name = %tool_call.name, "Executing tool");
 
-        let mut manager = self.mcp_server_manager.lock().await;
-        self.tool_executor
-            .execute(&mut manager, &tool_call.name, tool_call.arguments.clone())
-            .await
+        // 首先检查是否是本地工具
+        if self.local_tool_registry.has_tool(&tool_call.name) {
+            debug!(tool_name = %tool_call.name, "Executing as local tool");
+
+            // 获取 session_id
+            let session_id = uuid::Uuid::new_v4().to_string();
+
+            // 创建工具上下文
+            let context = ToolContext {
+                session_id,
+                config: Arc::clone(&self.config),
+            };
+
+            // 执行本地工具
+            let result = self
+                .local_tool_registry
+                .call_tool(&tool_call.name, tool_call.arguments.clone(), context)
+                .await;
+
+            // 转换为 ExecutionResult
+            match result {
+                Ok(value) => {
+                    let text_content = serde_json::to_string(&value).unwrap_or_default();
+                    Ok(ExecutionResult {
+                        tool_name: tool_call.name,
+                        is_error: false,
+                        text_content,
+                        raw_content: vec![],
+                    })
+                }
+                Err(e) => Ok(ExecutionResult {
+                    tool_name: tool_call.name,
+                    is_error: true,
+                    text_content: e.to_string(),
+                    raw_content: vec![],
+                }),
+            }
+        } else {
+            // 否则作为 MCP 工具执行
+            debug!(tool_name = %tool_call.name, "Executing as MCP tool");
+
+            let mut manager = self.mcp_server_manager.lock().await;
+            self.tool_executor
+                .execute(&mut manager, &tool_call.name, tool_call.arguments.clone())
+                .await
+        }
     }
 
     /// 创建助手文本消息

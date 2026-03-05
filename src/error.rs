@@ -16,6 +16,12 @@ pub enum Error {
     #[error("JSON serialization error: {0}")]
     SerdeJson(#[from] serde_json::Error),
 
+    #[error("Regex error: {0}")]
+    Regex(#[from] regex::Error),
+
+    #[error("Walkdir error: {0}")]
+    Walkdir(#[from] walkdir::Error),
+
     #[error("Address parse error: {0}")]
     AddrParse(#[from] std::net::AddrParseError),
 
@@ -43,6 +49,24 @@ pub enum Error {
     #[error("MCP tool execution error: {tool}: {message}")]
     McpToolExecution { tool: String, message: String },
 
+    #[error("Filesystem error: {0}")]
+    Filesystem(String),
+
+    #[error("Path not allowed: {0}")]
+    PathNotAllowed(String),
+
+    #[error("Path traversal detected: {0}")]
+    PathTraversal(String),
+
+    #[error("File too large: {0} bytes (max: {1} bytes)")]
+    FileTooLarge(usize, usize),
+
+    #[error("Local tool not found: {0}")]
+    LocalToolNotFound(String),
+
+    #[error("Local tool execution error: {tool}: {message}")]
+    LocalToolExecution { tool: String, message: String },
+
     #[error("Internal server error")]
     Internal,
 }
@@ -54,6 +78,8 @@ impl axum::response::IntoResponse for Error {
             Error::Io(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             Error::Reqwest(_) => axum::http::StatusCode::BAD_GATEWAY,
             Error::SerdeJson(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Error::Regex(_) => axum::http::StatusCode::BAD_REQUEST,
+            Error::Walkdir(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             Error::AddrParse(_) => axum::http::StatusCode::BAD_REQUEST,
             Error::Llm(_) => axum::http::StatusCode::BAD_GATEWAY,
             Error::SessionNotFound(_) => axum::http::StatusCode::NOT_FOUND,
@@ -63,6 +89,12 @@ impl axum::response::IntoResponse for Error {
             Error::McpServer { .. } => axum::http::StatusCode::BAD_GATEWAY,
             Error::McpToolNotFound(_) => axum::http::StatusCode::NOT_FOUND,
             Error::McpToolExecution { .. } => axum::http::StatusCode::BAD_GATEWAY,
+            Error::Filesystem(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Error::PathNotAllowed(_) => axum::http::StatusCode::FORBIDDEN,
+            Error::PathTraversal(_) => axum::http::StatusCode::FORBIDDEN,
+            Error::FileTooLarge(_, _) => axum::http::StatusCode::PAYLOAD_TOO_LARGE,
+            Error::LocalToolNotFound(_) => axum::http::StatusCode::NOT_FOUND,
+            Error::LocalToolExecution { .. } => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             Error::Internal => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
         };
 

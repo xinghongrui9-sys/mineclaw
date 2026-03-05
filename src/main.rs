@@ -4,6 +4,7 @@ use std::net::SocketAddr;
 
 use axum::serve;
 use mineclaw::mcp::{McpServerManager, ToolExecutor};
+use mineclaw::tools::{LocalToolRegistry, filesystem::FilesystemTool};
 use mineclaw::{
     AppState, Config, SessionRepository, ToolCoordinator, create_provider, create_router,
 };
@@ -54,6 +55,26 @@ async fn main() -> mineclaw::Result<()> {
 
     let tool_executor = ToolExecutor::new();
 
+    // 先保存服务器地址信息
+    let server_host = config.server.host.clone();
+    let server_port = config.server.port;
+
+    // 初始化本地工具注册表
+    let mut local_tool_registry = LocalToolRegistry::new();
+    FilesystemTool::register_all(&mut local_tool_registry);
+    info!(
+        "Local tools registered: {:?}",
+        local_tool_registry
+            .list_tools()
+            .iter()
+            .map(|t| t.name.clone())
+            .collect::<Vec<_>>()
+    );
+
+    // 包装为 Arc
+    let local_tool_registry_arc = std::sync::Arc::new(local_tool_registry);
+    let config_arc = std::sync::Arc::new(config);
+
     // 创建 Arc<Mutex<McpServerManager>> 用于共享
     let mcp_server_manager_arc = std::sync::Arc::new(tokio::sync::Mutex::new(mcp_server_manager));
 
@@ -62,6 +83,8 @@ async fn main() -> mineclaw::Result<()> {
         llm_provider.clone(),
         mcp_server_manager_arc.clone(),
         tool_executor.clone(),
+        local_tool_registry_arc.clone(),
+        config_arc.clone(),
     );
 
     let app_state = AppState::new(
@@ -70,10 +93,12 @@ async fn main() -> mineclaw::Result<()> {
         mcp_server_manager_arc,
         tool_executor,
         tool_coordinator,
+        local_tool_registry_arc,
+        config_arc,
     );
     let app = create_router(app_state);
 
-    let addr = SocketAddr::new(config.server.host.parse()?, config.server.port);
+    let addr = SocketAddr::new(server_host.parse()?, server_port);
     let listener = TcpListener::bind(addr).await?;
 
     info!("MineClaw server listening on {}", addr);
