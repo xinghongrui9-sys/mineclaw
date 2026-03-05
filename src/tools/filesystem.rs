@@ -701,7 +701,7 @@ impl LocalTool for CreateDirectoryTool {
 struct SearchAndReplaceTool;
 
 /// 从 diff 文本中提取 SEARCH/REPLACE 块
-fn parse_search_replace_blocks_from_diff(diff: &str) -> Vec<(String, String)> {
+pub fn parse_search_replace_blocks_from_diff(diff: &str) -> Vec<(String, String)> {
     let mut blocks = Vec::new();
     let mut lines = diff.lines().peekable();
 

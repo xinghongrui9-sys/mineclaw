@@ -1,17 +1,7 @@
-use mineclaw::tools::filesystem::parse_search_replace_blocks;
+use mineclaw::tools::filesystem::parse_search_replace_blocks_from_diff;
 
 fn main() {
-    // Test 1: Simple string (no blocks)
-    let search1 = "foo";
-    let replace1 = "FOO";
-    let blocks1 = parse_search_replace_blocks(search1, replace1);
-    println!("Test 1 - Simple string:");
-    println!("  Blocks: {:?}", blocks1);
-    assert_eq!(blocks1.len(), 1);
-    assert_eq!(blocks1[0], ("foo".to_string(), "FOO".to_string()));
-
-    // Test 2: SEARCH/REPLACE blocks
-    let search2 = r#"
+    let diff = r#"
 ------- SEARCH
 Line A: foo
 =======
@@ -24,7 +14,7 @@ Line C: foo
 Line C: FOO
 +++++++ REPLACE
 "#;
-    let blocks2 = parse_search_replace_blocks(search2, "");
+    let blocks2 = parse_search_replace_blocks_from_diff(diff);
     println!("\nTest 2 - SEARCH/REPLACE blocks:");
     println!("  Blocks: {:?}", blocks2);
     assert_eq!(blocks2.len(), 2);
