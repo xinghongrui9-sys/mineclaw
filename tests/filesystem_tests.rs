@@ -17,6 +17,7 @@ async fn test_read_write_file() {
     config.filesystem = FilesystemConfig {
         max_read_bytes: 16384,
         allowed_directories: vec![temp_dir.path().to_string_lossy().to_string()],
+        ..Default::default()
     };
 
     let mut registry = LocalToolRegistry::new();
@@ -80,6 +81,7 @@ async fn test_list_directory() {
     config.filesystem = FilesystemConfig {
         max_read_bytes: 16384,
         allowed_directories: vec![temp_dir_str.clone()],
+        ..Default::default()
     };
 
     let mut registry = LocalToolRegistry::new();
@@ -185,6 +187,7 @@ async fn test_delete_file() {
     config.filesystem = FilesystemConfig {
         max_read_bytes: 16384,
         allowed_directories: vec![temp_dir.path().to_string_lossy().to_string()],
+        ..Default::default()
     };
 
     let mut registry = LocalToolRegistry::new();
@@ -218,6 +221,7 @@ async fn test_path_traversal_protection() {
     config.filesystem = FilesystemConfig {
         max_read_bytes: 16384,
         allowed_directories: vec![temp_dir.path().to_string_lossy().to_string()],
+        ..Default::default()
     };
 
     let mut registry = LocalToolRegistry::new();
@@ -257,6 +261,7 @@ async fn test_search_file() {
     config.filesystem = FilesystemConfig {
         max_read_bytes: 16384,
         allowed_directories: vec![temp_dir.path().to_string_lossy().to_string()],
+        ..Default::default()
     };
 
     let mut registry = LocalToolRegistry::new();
@@ -316,6 +321,7 @@ async fn test_move_file() {
     config.filesystem = FilesystemConfig {
         max_read_bytes: 16384,
         allowed_directories: vec![temp_dir.path().to_string_lossy().to_string()],
+        ..Default::default()
     };
 
     let mut registry = LocalToolRegistry::new();
@@ -352,6 +358,7 @@ async fn test_create_and_delete_directory() {
     config.filesystem = FilesystemConfig {
         max_read_bytes: 16384,
         allowed_directories: vec![temp_dir.path().to_string_lossy().to_string()],
+        ..Default::default()
     };
 
     let mut registry = LocalToolRegistry::new();
@@ -407,6 +414,7 @@ async fn test_move_directory() {
     config.filesystem = FilesystemConfig {
         max_read_bytes: 16384,
         allowed_directories: vec![temp_dir.path().to_string_lossy().to_string()],
+        ..Default::default()
     };
 
     let mut registry = LocalToolRegistry::new();
@@ -445,6 +453,7 @@ async fn test_search_and_replace() {
     config.filesystem = FilesystemConfig {
         max_read_bytes: 16384,
         allowed_directories: vec![temp_dir.path().to_string_lossy().to_string()],
+        ..Default::default()
     };
 
     let mut registry = LocalToolRegistry::new();
