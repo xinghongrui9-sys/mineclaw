@@ -31,3 +31,8 @@ validator = "0.20.0"
 tokio-process = "0.2.5"
 futures-util = "0.3.31"
 async-stream = "0.3"
+regex = "1.10"
+walkdir = "2.5"
+tempfile = "3.10"
+pathdiff = "0.2"
+

@@ -8,6 +8,8 @@ pub struct Config {
     pub llm: LlmConfig,
     #[serde(default)]
     pub mcp: Option<McpConfig>,
+    #[serde(default)]
+    pub filesystem: FilesystemConfig,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -43,6 +45,27 @@ pub struct McpServerConfig {
     pub env: HashMap<String, String>,
 }
 
+#[derive(Debug, Deserialize, Clone)]
+pub struct FilesystemConfig {
+    #[serde(default = "default_max_read_bytes")]
+    pub max_read_bytes: usize,
+    #[serde(default)]
+    pub allowed_directories: Vec<String>,
+}
+
+fn default_max_read_bytes() -> usize {
+    16384
+}
+
+impl Default for FilesystemConfig {
+    fn default() -> Self {
+        Self {
+            max_read_bytes: default_max_read_bytes(),
+            allowed_directories: Vec::new(),
+        }
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -59,6 +82,7 @@ impl Default for Config {
                 temperature: 0.7,
             },
             mcp: None,
+            filesystem: FilesystemConfig::default(),
         }
     }
 }

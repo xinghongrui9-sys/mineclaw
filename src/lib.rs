@@ -10,6 +10,7 @@ pub mod mcp;
 pub mod models;
 pub mod state;
 pub mod tool_coordinator;
+pub mod tools;
 
 pub use api::create_router;
 pub use config::Config;

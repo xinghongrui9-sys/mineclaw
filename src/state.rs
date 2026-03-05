@@ -1,10 +1,12 @@
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+use crate::config::Config;
 use crate::llm::LlmProvider;
 use crate::mcp::{McpServerManager, ToolExecutor};
 use crate::models::SessionRepository;
 use crate::tool_coordinator::ToolCoordinator;
+use crate::tools::LocalToolRegistry;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -13,6 +15,8 @@ pub struct AppState {
     pub mcp_server_manager: Arc<Mutex<McpServerManager>>,
     pub tool_executor: ToolExecutor,
     pub tool_coordinator: Arc<ToolCoordinator>,
+    pub local_tool_registry: Arc<LocalToolRegistry>,
+    pub config: Arc<Config>,
 }
 
 impl AppState {
@@ -22,6 +26,8 @@ impl AppState {
         mcp_server_manager: Arc<Mutex<McpServerManager>>,
         tool_executor: ToolExecutor,
         tool_coordinator: ToolCoordinator,
+        local_tool_registry: Arc<LocalToolRegistry>,
+        config: Arc<Config>,
     ) -> Self {
         Self {
             session_repo,
@@ -29,6 +35,8 @@ impl AppState {
             mcp_server_manager,
             tool_executor,
             tool_coordinator: Arc::new(tool_coordinator),
+            local_tool_registry,
+            config,
         }
     }
 }
