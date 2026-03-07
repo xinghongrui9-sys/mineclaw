@@ -19,9 +19,16 @@ allowed_directories = [
     # "/path/to/workspace",
 ]
 
+# Checkpoint 配置
+[checkpoint]
+# 是否启用 checkpoint（默认 true）
+enabled = true
+# Checkpoint 存储目录（agentfs 路径，默认 .checkpoints）
+checkpoint_directory = ".checkpoints"
+
 # MCP (Model Context Protocol) 配置
 # [mcp]
-# enabled = false
+# enabled = true
 #
 # [[mcp.servers]]
 # name = "filesystem"
@@ -34,11 +41,3 @@ allowed_directories = [
 # command = "npx"
 # args = ["-y", "@modelcontextprotocol/server-github"]
 # env = { "GITHUB_PERSONAL_ACCESS_TOKEN" = "${GITHUB_TOKEN}" }
-
-[mcp]
-enabled = true
-
-[[mcp.servers]]
-name = "test-server"
-command = "node"
-args = ["/mnt/WD/Programming/workspace/Rust/mineclaw/test-mcp-server.js"]

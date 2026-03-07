@@ -42,7 +42,7 @@ pub async fn send_message(
 
     info!("Running tool coordinator");
     let (assistant_response, intermediate_messages) =
-        state.tool_coordinator.run(session.messages.clone()).await?;
+        state.tool_coordinator.run(session.clone()).await?;
     info!(
         "Tool coordinator finished, intermediate_messages={}",
         intermediate_messages.len()

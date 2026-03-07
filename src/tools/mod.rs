@@ -2,15 +2,22 @@
 //!
 //! 提供本地工具的 trait 定义和基础结构。
 
+use crate::checkpoint::CheckpointManager;
 use crate::config::Config;
 use crate::error::Result;
+use crate::models::Session;
 use async_trait::async_trait;
 use serde_json::Value;
 use std::sync::Arc;
 
+pub mod checkpoint;
 pub mod filesystem;
 pub mod registry;
 
+pub use self::checkpoint::{
+    CheckpointTools, CreateCheckpointTool, DeleteCheckpointTool, ListCheckpointsTool,
+    RestoreCheckpointTool,
+};
 pub use registry::LocalToolRegistry;
 
 // ==================== ToolContext ====================
@@ -18,10 +25,29 @@ pub use registry::LocalToolRegistry;
 /// 工具执行上下文
 #[derive(Debug, Clone)]
 pub struct ToolContext {
-    /// 会话 ID
-    pub session_id: String,
+    /// 会话
+    pub session: Session,
     /// 配置
     pub config: Arc<Config>,
+    /// Checkpoint 管理器
+    pub checkpoint_manager: Option<Arc<CheckpointManager>>,
+}
+
+impl ToolContext {
+    /// 创建新的工具上下文
+    pub fn new(session: Session, config: Arc<Config>) -> Self {
+        Self {
+            session,
+            config,
+            checkpoint_manager: None,
+        }
+    }
+
+    /// 设置 Checkpoint 管理器
+    pub fn with_checkpoint_manager(mut self, checkpoint_manager: Arc<CheckpointManager>) -> Self {
+        self.checkpoint_manager = Some(checkpoint_manager);
+        self
+    }
 }
 
 // ==================== LocalTool ====================

@@ -1,3 +1,4 @@
+use agentfs::AgentFsError;
 use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -67,8 +68,52 @@ pub enum Error {
     #[error("Local tool execution error: {tool}: {message}")]
     LocalToolExecution { tool: String, message: String },
 
+    #[error("Checkpoint error: {0}")]
+    Checkpoint(String),
+
+    #[error("Checkpoint not found: {0}")]
+    CheckpointNotFound(String),
+
+    #[error("Checkpoint already exists: {0}")]
+    CheckpointAlreadyExists(String),
+
+    #[error("Checkpoint limit reached for session: {0} (max: {1})")]
+    CheckpointLimitReached(String, usize),
+
+    #[error("AgentFS error: {0}")]
+    AgentFS(String),
+
     #[error("Internal server error")]
     Internal,
+}
+
+// From trait implementations for CheckpointError
+impl From<crate::checkpoint::CheckpointError> for Error {
+    fn from(err: crate::checkpoint::CheckpointError) -> Self {
+        match err {
+            crate::checkpoint::CheckpointError::NotFound(id) => Error::CheckpointNotFound(id),
+            crate::checkpoint::CheckpointError::SessionNotFound(id) => Error::SessionNotFound(id),
+            crate::checkpoint::CheckpointError::LimitReached(msg) => Error::Checkpoint(msg),
+            crate::checkpoint::CheckpointError::AgentFS(msg) => Error::AgentFS(msg),
+            crate::checkpoint::CheckpointError::Serialization(e) => Error::SerdeJson(e),
+            crate::checkpoint::CheckpointError::Io(e) => Error::Io(e),
+            crate::checkpoint::CheckpointError::InvalidData(msg) => Error::Checkpoint(msg),
+        }
+    }
+}
+
+// From trait implementation for AgentFsError
+impl From<AgentFsError> for Error {
+    fn from(err: AgentFsError) -> Self {
+        Error::AgentFS(err.to_string())
+    }
+}
+
+// From trait implementation for SqlError
+impl From<agentsql::SqlError> for Error {
+    fn from(err: agentsql::SqlError) -> Self {
+        Error::AgentFS(err.to_string())
+    }
 }
 
 impl axum::response::IntoResponse for Error {
@@ -95,6 +140,11 @@ impl axum::response::IntoResponse for Error {
             Error::FileTooLarge(_, _) => axum::http::StatusCode::PAYLOAD_TOO_LARGE,
             Error::LocalToolNotFound(_) => axum::http::StatusCode::NOT_FOUND,
             Error::LocalToolExecution { .. } => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Error::Checkpoint(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Error::CheckpointNotFound(_) => axum::http::StatusCode::NOT_FOUND,
+            Error::CheckpointAlreadyExists(_) => axum::http::StatusCode::CONFLICT,
+            Error::CheckpointLimitReached(_, _) => axum::http::StatusCode::BAD_REQUEST,
+            Error::AgentFS(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             Error::Internal => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
         };
 

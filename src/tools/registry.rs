@@ -94,6 +94,7 @@ impl Default for LocalToolRegistry {
 mod tests {
     use super::*;
     use crate::config::Config;
+    use crate::models::Session;
     use async_trait::async_trait;
     use serde_json::json;
 
@@ -153,10 +154,7 @@ mod tests {
         let mut registry = LocalToolRegistry::new();
         registry.register(Arc::new(TestTool));
 
-        let context = ToolContext {
-            session_id: "test-session".to_string(),
-            config: Arc::new(Config::default()),
-        };
+        let context = ToolContext::new(Session::new(), Arc::new(Config::default()));
 
         let result = registry
             .call_tool("test_tool", json!({"input": "World"}), context)
@@ -170,10 +168,7 @@ mod tests {
     async fn test_call_nonexistent_tool() {
         let registry = LocalToolRegistry::new();
 
-        let context = ToolContext {
-            session_id: "test-session".to_string(),
-            config: Arc::new(Config::default()),
-        };
+        let context = ToolContext::new(Session::new(), Arc::new(Config::default()));
 
         let result = registry.call_tool("nonexistent", json!({}), context).await;
 

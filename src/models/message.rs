@@ -47,6 +47,8 @@ pub struct Message {
     pub tool_calls: Option<Vec<ToolCall>>,
     /// 工具结果（仅当 role == ToolResult 时有值）
     pub tool_result: Option<ToolResult>,
+    /// 关联的 checkpoint ID（可选）
+    pub checkpoint_id: Option<String>,
 }
 
 impl Message {
@@ -60,6 +62,7 @@ impl Message {
             metadata: None,
             tool_calls: None,
             tool_result: None,
+            checkpoint_id: None,
         }
     }
 
@@ -75,6 +78,11 @@ impl Message {
 
     pub fn with_tool_result(mut self, tool_result: ToolResult) -> Self {
         self.tool_result = Some(tool_result);
+        self
+    }
+
+    pub fn with_checkpoint_id(mut self, checkpoint_id: String) -> Self {
+        self.checkpoint_id = Some(checkpoint_id);
         self
     }
 }
@@ -154,6 +162,34 @@ mod tests {
         assert!(msg.metadata.is_none());
         assert!(msg.tool_calls.is_none());
         assert!(msg.tool_result.is_none());
+        assert!(msg.checkpoint_id.is_none());
+    }
+
+    #[test]
+    fn test_with_checkpoint_id() {
+        let session_id = Uuid::new_v4();
+        let checkpoint_id = "checkpoint_123".to_string();
+
+        let msg = Message::new(session_id, MessageRole::User, "hello".to_string())
+            .with_checkpoint_id(checkpoint_id.clone());
+
+        assert_eq!(msg.checkpoint_id, Some(checkpoint_id));
+    }
+
+    #[test]
+    fn test_message_with_checkpoint_id_serialization() {
+        let session_id = Uuid::new_v4();
+        let checkpoint_id = "checkpoint_456".to_string();
+
+        let msg = Message::new(session_id, MessageRole::User, "hello".to_string())
+            .with_checkpoint_id(checkpoint_id.clone());
+
+        let serialized = serde_json::to_string(&msg).unwrap();
+        let deserialized: Message = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(msg.id, deserialized.id);
+        assert_eq!(msg.role, deserialized.role);
+        assert_eq!(deserialized.checkpoint_id, Some(checkpoint_id));
     }
 
     #[test]
@@ -288,12 +324,15 @@ mod tests {
             arguments: json!({"param": "value"}),
         };
         let metadata = json!({"key": "value"});
+        let checkpoint_id = "checkpoint_789".to_string();
 
         let msg = Message::new(session_id, MessageRole::ToolCall, "".to_string())
             .with_metadata(metadata.clone())
-            .with_tool_calls(vec![tool_call]);
+            .with_tool_calls(vec![tool_call])
+            .with_checkpoint_id(checkpoint_id.clone());
 
         assert_eq!(msg.metadata, Some(metadata));
         assert!(msg.tool_calls.is_some());
+        assert_eq!(msg.checkpoint_id, Some(checkpoint_id));
     }
 }

@@ -2,11 +2,17 @@
 
 use mineclaw::config::{Config, FilesystemConfig};
 use mineclaw::error::Error;
+use mineclaw::models::Session;
 use mineclaw::tools::filesystem::FilesystemTool;
 use mineclaw::tools::{LocalToolRegistry, ToolContext};
 use serde_json::json;
 use std::sync::Arc;
 use tempfile::tempdir;
+
+/// 创建测试用的 ToolContext
+fn create_test_context(config: Config) -> ToolContext {
+    ToolContext::new(Session::new(), Arc::new(config))
+}
 
 #[tokio::test]
 async fn test_read_write_file() {
@@ -22,10 +28,7 @@ async fn test_read_write_file() {
     let mut registry = LocalToolRegistry::new();
     FilesystemTool::register_all(&mut registry);
 
-    let context = ToolContext {
-        session_id: "test-session".to_string(),
-        config: Arc::new(config),
-    };
+    let context = create_test_context(config);
 
     // Write file
     let write_result = registry
@@ -85,10 +88,7 @@ async fn test_list_directory() {
     let mut registry = LocalToolRegistry::new();
     FilesystemTool::register_all(&mut registry);
 
-    let context = ToolContext {
-        session_id: "test-session".to_string(),
-        config: Arc::new(config),
-    };
+    let context = create_test_context(config);
 
     // Test 1: List with relative path
     let temp_dir_name = temp_dir_abs.file_name().unwrap().to_string_lossy();
@@ -190,10 +190,7 @@ async fn test_delete_file() {
     let mut registry = LocalToolRegistry::new();
     FilesystemTool::register_all(&mut registry);
 
-    let context = ToolContext {
-        session_id: "test-session".to_string(),
-        config: Arc::new(config),
-    };
+    let context = create_test_context(config);
 
     let result = registry
         .call_tool(
@@ -223,10 +220,7 @@ async fn test_path_traversal_protection() {
     let mut registry = LocalToolRegistry::new();
     FilesystemTool::register_all(&mut registry);
 
-    let context = ToolContext {
-        session_id: "test-session".to_string(),
-        config: Arc::new(config),
-    };
+    let context = create_test_context(config);
 
     // Try to access outside allowed directory with ..
     let result = registry
@@ -262,10 +256,7 @@ async fn test_search_file() {
     let mut registry = LocalToolRegistry::new();
     FilesystemTool::register_all(&mut registry);
 
-    let context = ToolContext {
-        session_id: "test-session".to_string(),
-        config: Arc::new(config),
-    };
+    let context = create_test_context(config);
 
     // Case-sensitive search
     let result = registry
@@ -321,10 +312,7 @@ async fn test_move_file() {
     let mut registry = LocalToolRegistry::new();
     FilesystemTool::register_all(&mut registry);
 
-    let context = ToolContext {
-        session_id: "test-session".to_string(),
-        config: Arc::new(config),
-    };
+    let context = create_test_context(config);
 
     let result = registry
         .call_tool(
@@ -357,10 +345,7 @@ async fn test_create_and_delete_directory() {
     let mut registry = LocalToolRegistry::new();
     FilesystemTool::register_all(&mut registry);
 
-    let context = ToolContext {
-        session_id: "test-session".to_string(),
-        config: Arc::new(config),
-    };
+    let context = create_test_context(config);
 
     // Create directory
     let result = registry
@@ -412,10 +397,7 @@ async fn test_move_directory() {
     let mut registry = LocalToolRegistry::new();
     FilesystemTool::register_all(&mut registry);
 
-    let context = ToolContext {
-        session_id: "test-session".to_string(),
-        config: Arc::new(config),
-    };
+    let context = create_test_context(config);
 
     let result = registry
         .call_tool(
@@ -450,10 +432,7 @@ async fn test_search_and_replace() {
     let mut registry = LocalToolRegistry::new();
     FilesystemTool::register_all(&mut registry);
 
-    let context = ToolContext {
-        session_id: "test-session".to_string(),
-        config: Arc::new(config),
-    };
+    let context = create_test_context(config);
 
     // Test 1: Simple string should fail (now only supports block format)
     let result = registry
@@ -501,4 +480,186 @@ Line C: FOO
 
     let content = std::fs::read_to_string(&test_file).unwrap();
     assert_eq!(content, "Line A: FOO\nLine B: bar\nLine C: FOO");
+}
+
+#[tokio::test]
+async fn test_replace_all_keywords() {
+    let temp_dir = tempdir().unwrap();
+    let test_file = temp_dir.path().join("replace_all_test.txt");
+
+    let mut config = Config::default();
+    config.filesystem = FilesystemConfig {
+        max_read_bytes: 16384,
+        allowed_directories: vec![temp_dir.path().to_string_lossy().to_string()],
+    };
+
+    let mut registry = LocalToolRegistry::new();
+    FilesystemTool::register_all(&mut registry);
+
+    let context = create_test_context(config);
+
+    // Test 1: Case-sensitive simple replace
+    std::fs::write(&test_file, "apple apple APPLE").unwrap();
+    let result = registry
+        .call_tool(
+            "replace_all_keywords",
+            json!({
+                "path": test_file.to_string_lossy().to_string(),
+                "search": "apple",
+                "replace": "banana"
+            }),
+            context.clone(),
+        )
+        .await
+        .unwrap();
+
+    assert!(result["success"].as_bool().unwrap());
+    assert_eq!(result["replacements"].as_u64().unwrap(), 2);
+    let content = std::fs::read_to_string(&test_file).unwrap();
+    assert_eq!(content, "banana banana APPLE");
+
+    // Test 2: Case-insensitive simple replace
+    std::fs::write(&test_file, "apple apple APPLE").unwrap();
+    let result = registry
+        .call_tool(
+            "replace_all_keywords",
+            json!({
+                "path": test_file.to_string_lossy().to_string(),
+                "search": "apple",
+                "replace": "banana",
+                "case_sensitive": false
+            }),
+            context.clone(),
+        )
+        .await
+        .unwrap();
+
+    assert!(result["success"].as_bool().unwrap());
+    assert_eq!(result["replacements"].as_u64().unwrap(), 3);
+    let content = std::fs::read_to_string(&test_file).unwrap();
+    assert_eq!(content, "banana banana banana");
+
+    // Test 3: Regex replace
+    std::fs::write(&test_file, "Test 123 Test 456").unwrap();
+    let result = registry
+        .call_tool(
+            "replace_all_keywords",
+            json!({
+                "path": test_file.to_string_lossy().to_string(),
+                "search": "\\d+",
+                "replace": "NUM",
+                "use_regex": true
+            }),
+            context.clone(),
+        )
+        .await
+        .unwrap();
+
+    assert!(result["success"].as_bool().unwrap());
+    assert_eq!(result["replacements"].as_u64().unwrap(), 2);
+    let content = std::fs::read_to_string(&test_file).unwrap();
+    assert_eq!(content, "Test NUM Test NUM");
+
+    // Test 4: Case-insensitive regex
+    std::fs::write(&test_file, "HELLO hello Hello").unwrap();
+    let result = registry
+        .call_tool(
+            "replace_all_keywords",
+            json!({
+                "path": test_file.to_string_lossy().to_string(),
+                "search": "hello",
+                "replace": "Hi",
+                "case_sensitive": false,
+                "use_regex": true
+            }),
+            context,
+        )
+        .await
+        .unwrap();
+
+    assert!(result["success"].as_bool().unwrap());
+    assert_eq!(result["replacements"].as_u64().unwrap(), 3);
+    let content = std::fs::read_to_string(&test_file).unwrap();
+    assert_eq!(content, "Hi Hi Hi");
+}
+
+#[tokio::test]
+async fn test_replace_no_chained_replacement() {
+    let temp_dir = tempdir().unwrap();
+    let test_file = temp_dir.path().join("no_chained_replace_test.txt");
+
+    let mut config = Config::default();
+    config.filesystem = FilesystemConfig {
+        max_read_bytes: 16384,
+        allowed_directories: vec![temp_dir.path().to_string_lossy().to_string()],
+    };
+
+    let mut registry = LocalToolRegistry::new();
+    FilesystemTool::register_all(&mut registry);
+
+    let context = create_test_context(config);
+
+    // Test 1: Simple string replace - no chained replacement
+    // "A" → "AB", should not replace the "A" in "AB"
+    std::fs::write(&test_file, "A A A").unwrap();
+    let result = registry
+        .call_tool(
+            "replace_all_keywords",
+            json!({
+                "path": test_file.to_string_lossy().to_string(),
+                "search": "A",
+                "replace": "AB"
+            }),
+            context.clone(),
+        )
+        .await
+        .unwrap();
+
+    assert!(result["success"].as_bool().unwrap());
+    assert_eq!(result["replacements"].as_u64().unwrap(), 3);
+    let content = std::fs::read_to_string(&test_file).unwrap();
+    assert_eq!(content, "AB AB AB");
+
+    // Test 2: Regex replace - no chained replacement
+    // "class " → "class_", should not create new matches
+    std::fs::write(&test_file, "class A class B class C").unwrap();
+    let result = registry
+        .call_tool(
+            "replace_all_keywords",
+            json!({
+                "path": test_file.to_string_lossy().to_string(),
+                "search": "class ",
+                "replace": "class_",
+                "use_regex": true
+            }),
+            context.clone(),
+        )
+        .await
+        .unwrap();
+
+    assert!(result["success"].as_bool().unwrap());
+    assert_eq!(result["replacements"].as_u64().unwrap(), 3);
+    let content = std::fs::read_to_string(&test_file).unwrap();
+    assert_eq!(content, "class_A class_B class_C");
+
+    // Test 3: Verify replacing with string containing search pattern
+    // "foo" → "foobar", result should be "foobar foobar", not "foobarbaz..."
+    std::fs::write(&test_file, "foo foo").unwrap();
+    let result = registry
+        .call_tool(
+            "replace_all_keywords",
+            json!({
+                "path": test_file.to_string_lossy().to_string(),
+                "search": "foo",
+                "replace": "foobar"
+            }),
+            context,
+        )
+        .await
+        .unwrap();
+
+    assert!(result["success"].as_bool().unwrap());
+    assert_eq!(result["replacements"].as_u64().unwrap(), 2);
+    let content = std::fs::read_to_string(&test_file).unwrap();
+    assert_eq!(content, "foobar foobar");
 }

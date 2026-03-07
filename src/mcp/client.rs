@@ -225,7 +225,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_initialize() {
-        let mut transport = MockTransport::new();
+        let transport = MockTransport::new();
 
         // 设置初始化响应
         let initialize_response = json!({
@@ -261,7 +261,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_tools() {
-        let mut transport = MockTransport::new();
+        let transport = MockTransport::new();
 
         // 设置初始化响应
         let initialize_response = json!({
@@ -326,7 +326,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_error_response() {
-        let mut transport = MockTransport::new();
+        let transport = MockTransport::new();
 
         // 设置错误响应
         let error_response = json!({
@@ -354,7 +354,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_call_tool() {
-        let mut transport = MockTransport::new();
+        let transport = MockTransport::new();
 
         // 设置初始化响应
         let initialize_response = json!({
@@ -415,7 +415,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_call_tool_error() {
-        let mut transport = MockTransport::new();
+        let transport = MockTransport::new();
 
         // 设置初始化响应
         let initialize_response = json!({

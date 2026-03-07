@@ -2,6 +2,34 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+/// Checkpoint 配置
+#[derive(Debug, Deserialize, Clone)]
+pub struct CheckpointConfig {
+    /// 是否启用 checkpoint
+    #[serde(default = "default_checkpoint_enabled")]
+    pub enabled: bool,
+    /// Checkpoint 存储目录（agentfs 路径）
+    #[serde(default = "default_checkpoint_directory")]
+    pub checkpoint_directory: String,
+}
+
+fn default_checkpoint_enabled() -> bool {
+    true
+}
+
+fn default_checkpoint_directory() -> String {
+    ".checkpoints".to_string()
+}
+
+impl Default for CheckpointConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_checkpoint_enabled(),
+            checkpoint_directory: default_checkpoint_directory(),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct Config {
     pub server: ServerConfig,
@@ -10,6 +38,14 @@ pub struct Config {
     pub mcp: Option<McpConfig>,
     #[serde(default)]
     pub filesystem: FilesystemConfig,
+    #[serde(default)]
+    pub checkpoint: CheckpointConfig,
+    #[serde(default = "default_agentfs_db_path")]
+    pub agentfs_db_path: String,
+}
+
+fn default_agentfs_db_path() -> String {
+    "data/mineclaw.db".to_string()
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -83,6 +119,8 @@ impl Default for Config {
             },
             mcp: None,
             filesystem: FilesystemConfig::default(),
+            checkpoint: CheckpointConfig::default(),
+            agentfs_db_path: default_agentfs_db_path(),
         }
     }
 }
@@ -110,6 +148,8 @@ impl Config {
             .set_default("llm.max_tokens", default_config.llm.max_tokens)
             .map_err(crate::error::Error::Config)?
             .set_default("llm.temperature", default_config.llm.temperature)
+            .map_err(crate::error::Error::Config)?
+            .set_default("agentfs_db_path", default_config.agentfs_db_path)
             .map_err(crate::error::Error::Config)?;
 
         if config_path.exists() {

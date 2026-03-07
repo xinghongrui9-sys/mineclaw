@@ -35,4 +35,5 @@ regex = "1.10"
 walkdir = "2.5"
 tempfile = "3.10"
 pathdiff = "0.2"
-
+agentfs = "0.2.0"
+agentsql = { version = "0.2.0", features = ["sqlite"] }

@@ -2,12 +2,16 @@
 
 use std::net::SocketAddr;
 
+use agentfs::AgentFS;
+use agentsql::SqlBackend;
 use axum::serve;
+use mineclaw::checkpoint::CheckpointManager;
 use mineclaw::mcp::{McpServerManager, ToolExecutor};
-use mineclaw::tools::{LocalToolRegistry, filesystem::FilesystemTool};
+use mineclaw::tools::{LocalToolRegistry, checkpoint::CheckpointTools, filesystem::FilesystemTool};
 use mineclaw::{
     AppState, Config, SessionRepository, ToolCoordinator, create_provider, create_router,
 };
+use std::sync::Arc;
 use tokio::net::TcpListener;
 use tracing::{info, level_filters::LevelFilter, warn};
 use tracing_subscriber::EnvFilter;
@@ -24,6 +28,21 @@ async fn main() -> mineclaw::Result<()> {
 
     let config = Config::load()?;
     info!("Configuration loaded successfully");
+
+    // 初始化 AgentFS
+    info!("Initializing AgentFS...");
+    let backend = SqlBackend::sqlite(&config.agentfs_db_path).await?;
+    let agent_fs = Arc::new(AgentFS::new(Box::new(backend), "mineclaw", "/mineclaw").await?);
+    info!("AgentFS initialized successfully");
+
+    // 初始化 CheckpointManager
+    info!("Initializing CheckpointManager...");
+    let checkpoint_manager = Arc::new(CheckpointManager::new(
+        agent_fs.clone(),
+        config.checkpoint.clone(),
+    ));
+    let checkpoint_manager_arc = checkpoint_manager.clone();
+    info!("CheckpointManager initialized successfully");
 
     let session_repo = SessionRepository::new();
     let llm_provider = create_provider(config.llm.clone());
@@ -62,6 +81,7 @@ async fn main() -> mineclaw::Result<()> {
     // 初始化本地工具注册表
     let mut local_tool_registry = LocalToolRegistry::new();
     FilesystemTool::register_all(&mut local_tool_registry);
+    CheckpointTools::register_all(&mut local_tool_registry);
     info!(
         "Local tools registered: {:?}",
         local_tool_registry
@@ -85,7 +105,8 @@ async fn main() -> mineclaw::Result<()> {
         tool_executor.clone(),
         local_tool_registry_arc.clone(),
         config_arc.clone(),
-    );
+    )
+    .with_checkpoint_manager(checkpoint_manager_arc.clone());
 
     let app_state = AppState::new(
         session_repo,
@@ -95,6 +116,8 @@ async fn main() -> mineclaw::Result<()> {
         tool_coordinator,
         local_tool_registry_arc,
         config_arc,
+        agent_fs,
+        checkpoint_manager,
     );
     let app = create_router(app_state);
 

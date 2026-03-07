@@ -5,12 +5,13 @@
 use super::{LocalTool, ToolContext};
 use crate::config::FilesystemConfig;
 use crate::error::{Error, Result};
+use crate::models::checkpoint::CheckpointType;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tracing::warn;
+use tracing::{debug, warn};
 
 // ==================== Path Security ====================
 
@@ -63,6 +64,50 @@ fn normalize_and_validate_path(path: &str, allowed_directories: &[String]) -> Re
 /// 获取文件系统配置
 fn get_filesystem_config(context: &ToolContext) -> FilesystemConfig {
     context.config.filesystem.clone()
+}
+
+// ==================== Checkpoint 辅助函数 ====================
+
+/// 在文件操作前自动创建 checkpoint
+async fn maybe_create_checkpoint(
+    context: &ToolContext,
+    affected_files: Vec<String>,
+    description: Option<String>,
+) -> Result<()> {
+    // 检查是否有 checkpoint manager
+    let Some(checkpoint_manager) = &context.checkpoint_manager else {
+        debug!("Checkpoint manager not available, skipping checkpoint creation");
+        return Ok(());
+    };
+
+    // 检查 checkpoint 是否启用
+    if !checkpoint_manager.config().enabled {
+        debug!("Checkpoint is disabled in config");
+        return Ok(());
+    }
+
+    // 只有在有受影响文件时才创建 checkpoint
+    if affected_files.is_empty() {
+        debug!("No affected files, skipping checkpoint");
+        return Ok(());
+    }
+
+    debug!(
+        "Creating automatic checkpoint for files: {:?}",
+        affected_files
+    );
+
+    // 创建 checkpoint
+    checkpoint_manager
+        .create_checkpoint(
+            &context.session,
+            description,
+            CheckpointType::Auto,
+            Some(affected_files),
+        )
+        .await?;
+
+    Ok(())
 }
 
 // ==================== Tool Parameters and Results ====================
@@ -199,6 +244,23 @@ pub struct SearchAndReplaceResult {
     pub replacements: usize,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ReplaceAllKeywordsParams {
+    pub path: String,
+    pub search: String,
+    pub replace: String,
+    #[serde(default)]
+    pub case_sensitive: Option<bool>,
+    #[serde(default)]
+    pub use_regex: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ReplaceAllKeywordsResult {
+    pub success: bool,
+    pub replacements: usize,
+}
+
 // ==================== Individual Tools ====================
 
 struct ReadFileTool;
@@ -297,6 +359,17 @@ impl LocalTool for WriteFileTool {
         let config = get_filesystem_config(&context);
 
         let path = normalize_and_validate_path(&params.path, &config.allowed_directories)?;
+
+        // 为该文件操作创建自动 checkpoint
+        let _ = maybe_create_checkpoint(
+            &context,
+            vec![path.to_string_lossy().to_string()],
+            Some(format!(
+                "Auto checkpoint before writing to: {}",
+                params.path
+            )),
+        )
+        .await;
 
         if let Some(parent) = path.parent()
             && !parent.exists()
@@ -427,6 +500,14 @@ impl LocalTool for DeleteFileTool {
 
         let path = normalize_and_validate_path(&params.path, &config.allowed_directories)?;
 
+        // 在修改前创建 checkpoint
+        let _ = maybe_create_checkpoint(
+            &context,
+            vec![params.path.clone()],
+            Some(format!("Before deleting file: {}", params.path)),
+        )
+        .await;
+
         std::fs::remove_file(&path)?;
 
         let result = DeleteFileResult { success: true };
@@ -537,6 +618,17 @@ impl LocalTool for MoveFileTool {
         let destination =
             normalize_and_validate_path(&params.destination, &config.allowed_directories)?;
 
+        // 在修改前创建 checkpoint
+        let _ = maybe_create_checkpoint(
+            &context,
+            vec![params.source.clone(), params.destination.clone()],
+            Some(format!(
+                "Before moving file: {} -> {}",
+                params.source, params.destination
+            )),
+        )
+        .await;
+
         if let Some(parent) = destination.parent()
             && !parent.exists()
         {
@@ -588,6 +680,17 @@ impl LocalTool for MoveDirectoryTool {
         let destination =
             normalize_and_validate_path(&params.destination, &config.allowed_directories)?;
 
+        // 在修改前创建 checkpoint
+        let _ = maybe_create_checkpoint(
+            &context,
+            vec![params.source.clone(), params.destination.clone()],
+            Some(format!(
+                "Before moving directory: {} -> {}",
+                params.source, params.destination
+            )),
+        )
+        .await;
+
         if let Some(parent) = destination.parent()
             && !parent.exists()
         {
@@ -637,6 +740,14 @@ impl LocalTool for DeleteDirectoryTool {
         let config = get_filesystem_config(&context);
 
         let path = normalize_and_validate_path(&params.path, &config.allowed_directories)?;
+
+        // 在修改前创建 checkpoint
+        let _ = maybe_create_checkpoint(
+            &context,
+            vec![params.path.clone()],
+            Some(format!("Before deleting directory: {}", params.path)),
+        )
+        .await;
 
         if params.recursive.unwrap_or(false) {
             std::fs::remove_dir_all(&path)?;
@@ -711,7 +822,7 @@ pub fn parse_search_replace_blocks_from_diff(diff: &str) -> Vec<(String, String)
             let mut replace_content = Vec::new();
 
             // 读取 SEARCH 部分直到 =======
-            while let Some(line) = lines.next() {
+            for line in lines.by_ref() {
                 if line.trim() == "=======" {
                     break;
                 }
@@ -719,7 +830,7 @@ pub fn parse_search_replace_blocks_from_diff(diff: &str) -> Vec<(String, String)
             }
 
             // 读取 REPLACE 部分直到 +++++++ REPLACE
-            while let Some(line) = lines.next() {
+            for line in lines.by_ref() {
                 if line.trim() == "+++++++ REPLACE" {
                     break;
                 }
@@ -727,25 +838,16 @@ pub fn parse_search_replace_blocks_from_diff(diff: &str) -> Vec<(String, String)
             }
 
             // 移除开头和末尾的空行
-            while search_content
-                .first()
-                .map_or(false, |l| l.trim().is_empty())
-            {
+            while search_content.first().is_some_and(|l| l.trim().is_empty()) {
                 search_content.remove(0);
             }
-            while search_content.last().map_or(false, |l| l.trim().is_empty()) {
+            while search_content.last().is_some_and(|l| l.trim().is_empty()) {
                 search_content.pop();
             }
-            while replace_content
-                .first()
-                .map_or(false, |l| l.trim().is_empty())
-            {
+            while replace_content.first().is_some_and(|l| l.trim().is_empty()) {
                 replace_content.remove(0);
             }
-            while replace_content
-                .last()
-                .map_or(false, |l| l.trim().is_empty())
-            {
+            while replace_content.last().is_some_and(|l| l.trim().is_empty()) {
                 replace_content.pop();
             }
 
@@ -799,6 +901,17 @@ impl LocalTool for SearchAndReplaceTool {
 
         let path = normalize_and_validate_path(&params.path, &config.allowed_directories)?;
 
+        // 在修改前创建 checkpoint
+        let _ = maybe_create_checkpoint(
+            &context,
+            vec![params.path.clone()],
+            Some(format!(
+                "Before search and replace in file: {}",
+                params.path
+            )),
+        )
+        .await;
+
         // 检查是否是有效的 SEARCH/REPLACE 块格式
         let search_has_blocks = params.diff.contains("------- SEARCH")
             && params.diff.contains("=======")
@@ -843,6 +956,113 @@ impl LocalTool for SearchAndReplaceTool {
     }
 }
 
+struct ReplaceAllKeywordsTool;
+
+#[async_trait]
+impl LocalTool for ReplaceAllKeywordsTool {
+    fn name(&self) -> &str {
+        "replace_all_keywords"
+    }
+
+    fn description(&self) -> &str {
+        "Find and replace all occurrences of a keyword in a file"
+    }
+
+    fn input_schema(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Path to the file"
+                },
+                "search": {
+                    "type": "string",
+                    "description": "Keyword or regex pattern to search for"
+                },
+                "replace": {
+                    "type": "string",
+                    "description": "Replacement text"
+                },
+                "case_sensitive": {
+                    "type": "boolean",
+                    "description": "Whether the search is case-sensitive",
+                    "default": true
+                },
+                "use_regex": {
+                    "type": "boolean",
+                    "description": "Whether to use regex for matching",
+                    "default": false
+                }
+            },
+            "required": ["path", "search", "replace"]
+        })
+    }
+
+    async fn call(&self, arguments: Value, context: ToolContext) -> Result<Value> {
+        let params: ReplaceAllKeywordsParams = serde_json::from_value(arguments)?;
+        let config = get_filesystem_config(&context);
+
+        let path = normalize_and_validate_path(&params.path, &config.allowed_directories)?;
+
+        // 在修改前创建 checkpoint
+        let _ = maybe_create_checkpoint(
+            &context,
+            vec![params.path.clone()],
+            Some(format!(
+                "Before replacing all keywords in file: {}",
+                params.path
+            )),
+        )
+        .await;
+        let mut content = std::fs::read_to_string(&path)?;
+        let case_sensitive = params.case_sensitive.unwrap_or(true);
+        let use_regex = params.use_regex.unwrap_or(false);
+
+        let replacements = if use_regex {
+            let pattern = if case_sensitive {
+                regex::Regex::new(&params.search)?
+            } else {
+                regex::Regex::new(&format!("(?i){}", params.search))?
+            };
+            let count = pattern.find_iter(&content).count();
+            content = pattern.replace_all(&content, &params.replace).to_string();
+            count
+        } else if case_sensitive {
+            let count = content.matches(&params.search).count();
+            content = content.replace(&params.search, &params.replace);
+            count
+        } else {
+            let mut result = String::new();
+            let mut last_end = 0;
+            let search_lower = params.search.to_lowercase();
+            let content_lower = content.to_lowercase();
+            let mut count = 0;
+
+            while let Some(start) = content_lower[last_end..].find(&search_lower) {
+                let real_start = last_end + start;
+                let real_end = real_start + params.search.len();
+                result.push_str(&content[last_end..real_start]);
+                result.push_str(&params.replace);
+                last_end = real_end;
+                count += 1;
+            }
+            result.push_str(&content[last_end..]);
+            content = result;
+            count
+        };
+
+        std::fs::write(&path, &content)?;
+
+        let result = ReplaceAllKeywordsResult {
+            success: true,
+            replacements,
+        };
+
+        Ok(serde_json::to_value(result)?)
+    }
+}
+
 // ==================== FilesystemTool ====================
 
 /// 文件系统工具集合
@@ -861,5 +1081,6 @@ impl FilesystemTool {
         registry.register(Arc::new(DeleteDirectoryTool));
         registry.register(Arc::new(CreateDirectoryTool));
         registry.register(Arc::new(SearchAndReplaceTool));
+        registry.register(Arc::new(ReplaceAllKeywordsTool));
     }
 }

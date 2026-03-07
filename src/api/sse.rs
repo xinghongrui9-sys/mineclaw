@@ -119,15 +119,12 @@ pub async fn handle_stream_request(
         // 保存会话
         let _ = state.session_repo.update(session.clone()).await;
 
-        // 克隆消息列表，用于工具协调器
-        let messages = session.messages.clone();
-
         // 在后台运行工具协调器
         let state_clone = state.clone();
         tokio::spawn(async move {
             let result = state_clone
                 .tool_coordinator
-                .run_with_callback(messages, sse_channel)
+                .run_with_callback(session.clone(), sse_channel)
                 .await;
 
             match result {

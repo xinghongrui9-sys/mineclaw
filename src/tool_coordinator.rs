@@ -2,10 +2,11 @@
 //!
 //! 负责协调 LLM 和 MCP 工具之间的交互，实现工具调用循环。
 
+use crate::checkpoint::CheckpointManager;
 use crate::error::{Error, Result};
 use crate::llm::{ChatMessage, ChatTool, LlmProvider};
 use crate::mcp::{ExecutionResult, McpServerManager, ToolExecutor};
-use crate::models::{Message, MessageRole, Tool, ToolCall, ToolResult};
+use crate::models::{Message, MessageRole, Session, Tool, ToolCall, ToolResult};
 use crate::tools::{LocalToolRegistry, ToolContext};
 use async_trait::async_trait;
 use serde_json::Value;
@@ -57,6 +58,7 @@ pub struct ToolCoordinator {
     tool_executor: ToolExecutor,
     local_tool_registry: Arc<LocalToolRegistry>,
     config: Arc<crate::config::Config>,
+    checkpoint_manager: Option<Arc<CheckpointManager>>,
     /// 最大工具调用轮数
     max_iterations: usize,
 }
@@ -76,8 +78,15 @@ impl ToolCoordinator {
             tool_executor,
             local_tool_registry,
             config,
+            checkpoint_manager: None,
             max_iterations: 10,
         }
+    }
+
+    /// 设置 CheckpointManager
+    pub fn with_checkpoint_manager(mut self, checkpoint_manager: Arc<CheckpointManager>) -> Self {
+        self.checkpoint_manager = Some(checkpoint_manager);
+        self
     }
 
     /// 设置最大工具调用轮数
@@ -89,19 +98,19 @@ impl ToolCoordinator {
     /// 运行工具调用协调循环（无回调版本）
     ///
     /// # 参数
-    /// - `messages`: 初始消息列表
+    /// - `session`: 会话对象
     ///
     /// # 返回
     /// - 最终文本响应
     /// - 所有中间消息（包括工具调用和结果）
-    pub async fn run(&self, messages: Vec<Message>) -> Result<(String, Vec<Message>)> {
-        self.run_with_callback(messages, NoopCallback).await
+    pub async fn run(&self, session: Session) -> Result<(String, Vec<Message>)> {
+        self.run_with_callback(session, NoopCallback).await
     }
 
     /// 运行工具调用协调循环（带回调版本）
     ///
     /// # 参数
-    /// - `messages`: 初始消息列表
+    /// - `session`: 会话对象
     /// - `callback`: 回调实现，用于接收事件通知
     ///
     /// # 返回
@@ -109,7 +118,7 @@ impl ToolCoordinator {
     /// - 所有中间消息（包括工具调用和结果）
     pub async fn run_with_callback<C>(
         &self,
-        messages: Vec<Message>,
+        session: Session,
         callback: C,
     ) -> Result<(String, Vec<Message>)>
     where
@@ -117,7 +126,7 @@ impl ToolCoordinator {
     {
         info!(
             "Starting tool coordinator, message_count={}",
-            messages.len()
+            session.messages.len()
         );
 
         let mut intermediate_messages = Vec::new();
@@ -132,7 +141,8 @@ impl ToolCoordinator {
             debug!("Available tools: {}", tools.len());
 
             // 2. 转换消息为 LLM 格式
-            let chat_messages: Vec<ChatMessage> = messages
+            let chat_messages: Vec<ChatMessage> = session
+                .messages
                 .iter()
                 .chain(intermediate_messages.iter())
                 .map(ChatMessage::from_message)
@@ -158,7 +168,7 @@ impl ToolCoordinator {
                 // 方案：只创建 ToolCall 消息，文本放在 ToolCall 消息的 content 中
                 // 这样避免了消息重复，也保持了数据完整性
                 let mut tool_call_message =
-                    self.create_tool_call_message(&messages, &llm_response.tool_calls);
+                    self.create_tool_call_message(&session.messages, &llm_response.tool_calls);
 
                 // 如果有文本，添加到 ToolCall 消息中并触发回调
                 if let Some(text) = &llm_response.text
@@ -177,7 +187,7 @@ impl ToolCoordinator {
                         .on_tool_call(&tool_call.name, &tool_call.arguments)
                         .await;
 
-                    let result = self.execute_tool(tool_call.clone()).await?;
+                    let result = self.execute_tool(tool_call.clone(), &session).await?;
 
                     // 触发工具结果回调
                     callback
@@ -186,7 +196,7 @@ impl ToolCoordinator {
 
                     // 创建工具结果消息
                     let tool_result_message =
-                        self.create_tool_result_message(&messages, &tool_call, &result);
+                        self.create_tool_result_message(&session.messages, &tool_call, &result);
                     intermediate_messages.push(tool_result_message);
                 }
             } else {
@@ -201,7 +211,7 @@ impl ToolCoordinator {
 
                 // 添加最终的文本消息
                 let assistant_message =
-                    self.create_assistant_message(&messages, final_text.clone());
+                    self.create_assistant_message(&session.messages, final_text.clone());
                 intermediate_messages.push(assistant_message);
 
                 // 触发助手消息回调和完成回调
@@ -236,21 +246,24 @@ impl ToolCoordinator {
     }
 
     /// 执行单个工具调用
-    async fn execute_tool(&self, tool_call: ToolCall) -> Result<ExecutionResult> {
+    async fn execute_tool(
+        &self,
+        tool_call: ToolCall,
+        session: &Session,
+    ) -> Result<ExecutionResult> {
         info!(tool_name = %tool_call.name, "Executing tool");
 
         // 首先检查是否是本地工具
         if self.local_tool_registry.has_tool(&tool_call.name) {
             debug!(tool_name = %tool_call.name, "Executing as local tool");
 
-            // 获取 session_id
-            let session_id = uuid::Uuid::new_v4().to_string();
-
             // 创建工具上下文
-            let context = ToolContext {
-                session_id,
-                config: Arc::clone(&self.config),
-            };
+            let mut context = ToolContext::new(session.clone(), Arc::clone(&self.config));
+
+            // 添加 CheckpointManager 如果可用
+            if let Some(cm) = &self.checkpoint_manager {
+                context = context.with_checkpoint_manager(cm.clone());
+            }
 
             // 执行本地工具
             let result = self
