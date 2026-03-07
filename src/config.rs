@@ -1,8 +1,9 @@
 use crate::encryption::EncryptionManager;
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::fs;
 use std::path::PathBuf;
-use tracing::info;
+use tracing::{info, warn};
 
 /// Checkpoint 配置
 #[derive(Debug, Deserialize, Clone)]
@@ -162,7 +163,7 @@ impl Config {
             .map_err(crate::error::Error::Config)?;
 
         if config_path.exists() {
-            settings = settings.add_source(config::File::from(config_path));
+            settings = settings.add_source(config::File::from(config_path.clone()));
         }
 
         let settings = settings
@@ -171,9 +172,13 @@ impl Config {
 
         let mut config = settings.try_deserialize::<Config>()?;
 
-        // 尝试自动解密敏感字段
+        // 检查环境变量中是否有加密密钥
+        let encryption_key_env = std::env::var("MINECLAW_ENCRYPTION_KEY").ok();
+
+        // 处理 API Key
         if config.llm.api_key.starts_with("encrypted:") {
-            let key = std::env::var("MINECLAW_ENCRYPTION_KEY").map_err(|_| {
+            // 情况1：已经是加密的 API Key，需要解密
+            let key = encryption_key_env.ok_or_else(|| {
                 crate::error::Error::Config(config::ConfigError::Message(
                     "Encrypted API Key detected but MINECLAW_ENCRYPTION_KEY is missing".to_string(),
                 ))
@@ -196,9 +201,97 @@ impl Config {
 
             info!("Successfully decrypted LLM API Key");
             config.llm.api_key = plain_text;
+        } else if !config.llm.api_key.is_empty() {
+            // 情况2：明文 API Key
+            if let Some(key) = encryption_key_env {
+                // 有加密密钥，自动加密并写回配置文件
+                match EncryptionManager::new(&key) {
+                    Ok(manager) => match manager.encrypt(&config.llm.api_key) {
+                        Ok(encrypted) => {
+                            info!("API Key encrypted successfully");
+
+                            // 尝试写回配置文件
+                            if config_path.exists() {
+                                match Self::update_config_with_encrypted_key(
+                                    &config_path,
+                                    &encrypted,
+                                ) {
+                                    Ok(_) => {
+                                        info!("Config file updated with encrypted API Key");
+                                    }
+                                    Err(e) => {
+                                        warn!("Failed to update config file: {}", e);
+                                        info!(
+                                            "To store it securely, update your config file with:"
+                                        );
+                                        info!("llm.api_key = \"encrypted:{}\"", encrypted);
+                                    }
+                                }
+                            } else {
+                                info!(
+                                    "Config file not found. To store it securely, create a config file with:"
+                                );
+                                info!("llm.api_key = \"encrypted:{}\"", encrypted);
+                            }
+                        }
+                        Err(e) => {
+                            warn!("Failed to encrypt API Key: {}", e);
+                        }
+                    },
+                    Err(e) => {
+                        warn!("Invalid encryption key in environment variable: {}", e);
+                    }
+                }
+            } else {
+                // 没有加密密钥，发出警告
+                warn!(
+                    "API Key is stored in plaintext. For better security, set MINECLAW_ENCRYPTION_KEY environment variable and encrypt your API Key."
+                );
+            }
         }
 
         Ok(config)
+    }
+
+    /// 更新配置文件，将 API Key 替换为加密版本
+    fn update_config_with_encrypted_key(
+        config_path: &PathBuf,
+        encrypted_key: &str,
+    ) -> crate::error::Result<()> {
+        use toml_edit::{DocumentMut, value};
+
+        let content = fs::read_to_string(config_path).map_err(|e| {
+            crate::error::Error::Config(config::ConfigError::Message(format!(
+                "Failed to read config file: {}",
+                e
+            )))
+        })?;
+
+        let mut doc = content.parse::<DocumentMut>().map_err(|e| {
+            crate::error::Error::Config(config::ConfigError::Message(format!(
+                "Failed to parse config file: {}",
+                e
+            )))
+        })?;
+
+        // 更新 llm.api_key
+        if let Some(llm) = doc.get_mut("llm").and_then(|t| t.as_table_mut()) {
+            llm["api_key"] = value(format!("encrypted:{}", encrypted_key));
+        } else {
+            return Err(crate::error::Error::Config(config::ConfigError::Message(
+                "Config file missing [llm] section".to_string(),
+            )));
+        }
+
+        // 写回文件
+        fs::write(config_path, doc.to_string()).map_err(|e| {
+            crate::error::Error::Config(config::ConfigError::Message(format!(
+                "Failed to write config file: {}",
+                e
+            )))
+        })?;
+
+        Ok(())
     }
 
     fn get_config_path() -> crate::error::Result<PathBuf> {

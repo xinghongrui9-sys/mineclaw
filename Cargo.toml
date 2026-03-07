@@ -40,6 +40,7 @@ async-stream = "0.3"
 regex = "1.10"
 walkdir = "2.5"
 tempfile = "3.10"
+toml_edit = "0.22"
 pathdiff = "0.2"
 agentfs = "0.2.0"
 agentsql = { version = "0.2.0", features = ["sqlite"] }
