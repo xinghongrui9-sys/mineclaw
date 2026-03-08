@@ -8,8 +8,6 @@
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-[文档](#-文档) • [快速开始](#-快速开始) • [架构](#-架构设计) • [路线图](#-路线图)
-
 </div>
 
 ## ✨ 项目特性
@@ -198,6 +196,6 @@ MIT License - 详见 [LICENSE](LICENSE) 文件
 
 **Made with ❤️ and 🦞 by the MineClaw team**
 
-[⭐ Star us on GitHub](https://github.com/Cryptocho/mineclaw) • [🐦 Follow us](https://twitter.com/yourhandle)
+[⭐ Star us on GitHub](https://github.com/Cryptocho/mineclaw)
 
 </div>
