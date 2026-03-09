@@ -2,6 +2,7 @@
 //!
 //! 核心库模块
 
+pub mod agent;
 pub mod api;
 pub mod checkpoint;
 pub mod config;
@@ -14,6 +15,7 @@ pub mod state;
 pub mod tool_coordinator;
 pub mod tools;
 
+pub use agent::AgentExecutor;
 pub use api::create_router;
 pub use config::Config;
 pub use error::{Error, Result};

@@ -190,17 +190,20 @@
 ### Phase 4.1: Agent 基础定义（支持嵌套深度）
 
 #### 任务清单
-- [ ] 定义 AgentId 类型（新type 包装 Uuid）
-- [ ] 定义 AgentRole 枚举（更新为新架构）
-- [ ] 定义 AgentCapability 标签系统
-- [ ] 定义 LLM 配置结构
-- [ ] 定义 AgentState 枚举
-- [ ] 定义 Agent 核心数据结构（支持嵌套深度）
-- [ ] 定义 AgentConfig 配置结构
-- [ ] 实现 Agent 执行函数（接收任务，返回结果）
-- [ ] 实现 Agent 求助功能（发送工单给 CMA）
-- [ ] 编写单元测试
-- [ ] 验证验收清单
+- [x] 定义 AgentId 类型（新type 包装 Uuid）
+- [x] 定义 AgentRole 枚举（更新为新架构）
+- [x] 定义 AgentCapability 标签系统
+- [x] 定义 LLM 配置结构
+- [x] 定义 AgentState 枚举
+- [x] 定义 Agent 核心数据结构（支持嵌套深度）
+- [x] 定义 AgentConfig 配置结构
+- [x] 实现 Agent 执行函数（接收任务，返回结果）
+- [x] 实现 Agent 发送工单功能（可发送给 CMA 或总控）
+- [x] 编写单元测试
+- [x] 验证验收清单
+- [x] 实现建造者模式 (AgentBuilder, WorkerAgentBuilder)
+- [x] 优化 AgentState 设计（移除 Error，合并为 WaitingForReview）
+- [x] 简化 WorkOrderRecipient（移除 Agent，只保留 ContextManager 和 Orchestrator）
 
 #### 数据结构设计
 
@@ -231,8 +234,11 @@
 **AgentState**
 - Idle: 空闲，可接受任务
 - Busy: 忙碌，正在执行任务
-- Error: 错误状态，包含错误信息
-- RequestingHelp: 正在向 CMA 求助
+- WaitingForReview: 已完成，提交结果/求助等待审查/响应
+
+**设计说明**：
+- Error 状态被移除，错误通过 Result 返回值处理
+- RequestingHelp 被合并到 WaitingForReview，统一表示"等待外部响应"
 
 **Agent（核心结构）**
 - id: AgentId
@@ -273,15 +279,31 @@
 - execution_time_ms: u64
 - new_checkpoint_id: Option<CheckpointId>
 
-**HelpRequest（Agent 求助工单）**
-- requester_agent_id: AgentId
+**WorkOrder（工单，统一结构）**
+- work_order_type: WorkOrderType（工单类型）
+- recipient: WorkOrderRecipient（接收对象）
 - session_id: SessionId
-- task_description: String
-- attempts_made: Vec<String>
-- failure_count: u32
-- error_messages: Vec<String>
-- suggested_checkpoint_id: Option<CheckpointId>
+- title: String（工单标题）
+- content: String（工单内容，JSON 或自由文本）
+- related_files: Vec<String>（相关文件）
+- suggested_checkpoint_id: Option<CheckpointId>（建议回退的 Checkpoint）
+- created_by: Option<AgentId>（创建者，Agent 或总控）
 - created_at: DateTime<Utc>
+
+**WorkOrderType（工单类型）**
+- TaskCompletion: 任务完成汇报
+- Handover: 接力转交
+- HelpRequest: 求助
+- StatusUpdate: 状态更新
+
+**WorkOrderRecipient（接收对象）**
+- ContextManager: 发送给 CMA
+- Orchestrator(OrchestratorId): 发送给指定总控
+
+**设计说明**：
+- 移除了 Agent(AgentId) 变体
+- 工单总是先发送给总控或 CMA，由总控决定下一步路由
+- 避免 Agent 之间直接点对点通信，确保总控的协调作用
 
 #### API 设计
 
@@ -301,11 +323,11 @@
 - 更新 Agent 状态（Busy → Idle/Error）
 - 创建新的 Checkpoint（如果需要）
 
-**Agent 发送求助**
-- 输入：Agent, HelpRequest
+**Agent 发送工单**
+- 输入：Agent, WorkOrder
 - 输出：Result<(), Error>
-- 将求助工单发送给 CMA
-- 更新 Agent 状态为 RequestingHelp
+- 根据 recipient 发送给目标（ContextManager 或 Orchestrator）
+- 发送工单后，Agent 状态更新为 WaitingForReview
 
 **Agent 状态查询**
 - 输入：Agent
@@ -314,23 +336,29 @@
 #### 测试策略
 - 单元测试：所有数据结构和基础操作
 - 单元测试：嵌套深度设置和验证
-- 单元测试：求助功能
+- 单元测试：工单发送功能（不同接收对象）
 - 集成测试：Agent 执行任务的端到端流程
 - 错误处理测试：验证各种错误场景的处理
 
 #### 验收标准
-- [ ] 可以创建 Agent 并分配唯一 ID
-- [ ] Agent 配置验证正常工作
-- [ ] SubOrchestrator 可以正确设置嵌套深度
-- [ ] Agent 可以接收任务
-- [ ] Agent 可以调用 LLM
-- [ ] Agent 可以使用工具
-- [ ] Agent 可以返回响应
-- [ ] Agent 状态正确更新
-- [ ] Agent 可以发送求助工单给 CMA
-- [ ] 错误处理正常工作
-- [ ] 所有单元测试通过
-- [ ] 集成测试通过
+- [x] 可以创建 Agent 并分配唯一 ID
+- [x] Agent 配置验证正常工作
+- [x] SubOrchestrator 可以正确设置嵌套深度
+- [x] Agent 可以接收任务
+- [ ] Agent 可以调用 LLM (占位实现，后续完善)
+- [ ] Agent 可以使用工具 (占位实现，后续完善)
+- [x] Agent 可以返回响应
+- [x] Agent 状态正确更新
+- [x] Agent 可以发送工单给 CMA（求助）
+- [x] Agent 可以发送工单给总控（任务完成）
+- [x] 错误处理正常工作
+- [x] 所有单元测试通过 (119 tests passed)
+- [ ] 集成测试通过 (待 Phase 4.2 完成)
+
+**已完成的额外工作**：
+- [x] 实现了 AgentBuilder 和 WorkerAgentBuilder 建造者模式
+- [x] 优化了 AgentState 设计
+- [x] 简化了 WorkOrderRecipient 设计
 
 ---
 
@@ -346,7 +374,7 @@
 - [ ] 实现任务分配功能（串行）
 - [ ] 实现任务分配功能（并行）
 - [ ] 实现结果回收功能
-- [ ] 实现工单生成和处理
+- [ ] 实现工单生成和处理（统一工单结构）
 - [ ] 实现 Session 与 Agent 的关联
 - [ ] 实现 CMA 通知处理（回退和转交）
 - 编写单元测试
@@ -398,12 +426,7 @@
 - assignments: Vec<TaskAssignment>
 - wait_for_all: bool（是否等待所有任务完成）
 
-**WorkOrder（工单）**
-- completed_work: String（已完成部分详细标注）
-- related_files: Vec<String>（相关文件的相对路径列表）
-- next_stage_plan: String（下一阶段的详细计划）
-- created_by: OrchestratorId
-- created_at: DateTime<Utc>
+（WorkOrder 统一定义见 Phase 4.1）
 
 **CmaNotification（CMA 通知）**
 - notification_type: CmaNotificationType
@@ -482,8 +505,9 @@
 - 清理 active_tasks
 
 **总控生成工单**
-- 输入：&Orchestrator, WorkOrder
-- 输出：Result<String, Error>
+- 输入：&Orchestrator, WorkOrderType, WorkOrderRecipient, title, content
+- 输出：Result<WorkOrder, Error>
+- 创建工单
 - 序列化为 JSON 字符串，作为 User Message
 
 **总控处理 CMA 通知**
@@ -1005,13 +1029,13 @@
 - 返回 true 表示需要裁剪
 - 这是唯一的自动触发点
 
-**接收 Agent 求助（触发点 1）**
-- 输入：HelpRequest
-- 输出：Result<(), Error>
-- 记录求助
-- 分析情况
-- 决定回退到哪个 Checkpoint
-- 触发总控转交
++**接收工单（触发点 1：Agent 发送求助工单）**
++- 输入：WorkOrder（recipient = ContextManager, type = HelpRequest）
++- 输出：Result<(), Error>
++- 记录工单
++- 分析情况
++- 决定回退到哪个 Checkpoint
++- 触发总控转交
 
 **执行裁剪**
 - 输入：SessionId, TrimmingStrategy
@@ -1064,7 +1088,7 @@
 - 单元测试：上下文存储和检索
 - 单元测试：裁剪策略
 - 单元测试：持续犯错检测
-- 单元测试：求助接收和处理
++- 单元测试：工单接收和处理（来自 Agent 的求助）
 - 单元测试：工单生成
 - 集成测试：ContextManagerAgent 端到端流程（两种触发机制）
 
@@ -1073,7 +1097,7 @@
 - [ ] 可以获取完整上下文
 - [ ] 可以正确计算 token 数
 - [ ] 可以检查是否需要裁剪（唯一自动触发点）
-- [ ] 可以接收 Agent 求助
++- [ ] 可以接收 Agent 的求助工单（recipient = ContextManager）
 - [ ] FIFO 裁剪策略正常工作
 - [ ] 基于重要性的裁剪策略正常工作
 - [ ] 混合裁剪策略正常工作
@@ -1081,7 +1105,7 @@
 - [ ] 可以标记块为重要
 - [ ] 持续犯错检测正常工作
 - [ ] 可以决定回退到哪个 Checkpoint
-- [ ] 可以通知总控进行转交
++- [ ] 收到求助工单后可以通知总控进行转交
 - 可以创建工单（JSON 格式）
 - [ ] 策略模板可以保存和读取
 - [ ] 可以设置默认模板
@@ -1289,25 +1313,25 @@
 - 响应：Session
 - 状态码：200 OK, 404 Not Found
 
-**CMA 相关 API**
-
-`POST /api/cma/help-requests`
-- Agent 提交求助
-- 请求体：HelpRequest
-- 响应：{ received: bool, message: string }
-- 状态码：202 Accepted
-
-`GET /api/cma/help-requests`
-- 列出求助请求
-- 查询参数：session_id, agent_id, status, page, page_size
-- 响应：{ requests: Vec<HelpRequest>, total: usize, page: usize, page_size: usize }
-- 状态码：200 OK
-
-`GET /api/cma/notifications`
-- 列出 CMA 通知
-- 查询参数：session_id, orchestrator_id, type, page, page_size
-- 响应：{ notifications: Vec<CmaNotification>, total: usize, page: usize, page_size: usize }
-- 状态码：200 OK
++**CMA 相关 API**
++
++`POST /api/cma/work-orders`
++- Agent 提交工单（包括求助）
++- 请求体：WorkOrder
++- 响应：{ received: bool, message: string }
++- 状态码：202 Accepted
++
++`GET /api/cma/work-orders`
++- 列出工单
++- 查询参数：session_id, agent_id, recipient, work_order_type, page, page_size
++- 响应：{ work_orders: Vec<WorkOrder>, total: usize, page: usize, page_size: usize }
++- 状态码：200 OK
++
++`GET /api/cma/notifications`
++- 列出 CMA 通知
++- 查询参数：session_id, orchestrator_id, type, page, page_size
++- 响应：{ notifications: Vec<CmaNotification>, total: usize, page: usize, page_size: usize }
++- 状态码：200 OK
 
 **TaskStatus 枚举**
 - Pending: 等待执行
@@ -1344,8 +1368,8 @@
 - [ ] 可以查询 Session 历史和 Checkpoint
 - [ ] 可以恢复到指定 Checkpoint
 - [ ] 可以为 Session 分配和解绑总控
-- [ ] 可以通过 API 提交求助
-- [ ] 可以查询求助和 CMA 通知
+- [ ] 可以通过 API 提交工单（包括求助）
+- [ ] 可以查询工单和 CMA 通知
 - [ ] 所有 API 端点都有适当的日志
 - [ ] 错误响应格式一致
 - [ ] 所有 API 集成测试通过
@@ -1610,8 +1634,9 @@
 - **Checkpoint**：Session 状态的快照
 - **Tool Mask**：控制 Agent 工具使用权限的机制
 - **Context Manager Agent (CMA)**：管理会话上下文的特殊 Agent（监军）
-- **Help Request（求助工单）**：Agent 向 CMA 发送的求助请求
-- **Work Order（工单）**：接力转交时的任务描述（作为 User Message）
+- **Work Order（工单）**：统一的消息结构，可用于任务完成汇报、接力转交、求助等
+- **Work Order Type（工单类型）**：TaskCompletion, Handover, HelpRequest, StatusUpdate
+- **Work Order Recipient（工单接收对象）**：ContextManager, Orchestrator, Agent
 - **嵌套子总控接力模式**：强依赖顺序场景的执行模式
 - **平行子总控集群模式**：可并行分解场景的执行模式
 - **ACP**：Agent Client Protocol，用于与编辑器集成的协议

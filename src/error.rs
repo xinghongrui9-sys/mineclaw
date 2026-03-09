@@ -38,6 +38,9 @@ pub enum Error {
     #[error("Invalid input: {0}")]
     InvalidInput(String),
 
+    #[error("Invalid configuration: {0}")]
+    InvalidConfig(String),
+
     #[error("MCP error: {0}")]
     Mcp(String),
 
@@ -82,6 +85,18 @@ pub enum Error {
 
     #[error("AgentFS error: {0}")]
     AgentFS(String),
+
+    #[error("Agent not found: {0}")]
+    AgentNotFound(String),
+
+    #[error("Invalid agent configuration: {0}")]
+    AgentInvalidConfig(String),
+
+    #[error("Agent execution error: {0}")]
+    AgentExecution(String),
+
+    #[error("Work order error: {0}")]
+    WorkOrder(String),
 
     #[error("Internal server error")]
     Internal,
@@ -130,6 +145,7 @@ impl axum::response::IntoResponse for Error {
             Error::SessionNotFound(_) => axum::http::StatusCode::NOT_FOUND,
             Error::MessageNotFound(_) => axum::http::StatusCode::NOT_FOUND,
             Error::InvalidInput(_) => axum::http::StatusCode::BAD_REQUEST,
+            Error::InvalidConfig(_) => axum::http::StatusCode::BAD_REQUEST,
             Error::Mcp(_) => axum::http::StatusCode::BAD_GATEWAY,
             Error::McpServer { .. } => axum::http::StatusCode::BAD_GATEWAY,
             Error::McpToolNotFound(_) => axum::http::StatusCode::NOT_FOUND,
@@ -145,6 +161,10 @@ impl axum::response::IntoResponse for Error {
             Error::CheckpointAlreadyExists(_) => axum::http::StatusCode::CONFLICT,
             Error::CheckpointLimitReached(_, _) => axum::http::StatusCode::BAD_REQUEST,
             Error::AgentFS(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Error::AgentNotFound(_) => axum::http::StatusCode::NOT_FOUND,
+            Error::AgentInvalidConfig(_) => axum::http::StatusCode::BAD_REQUEST,
+            Error::AgentExecution(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Error::WorkOrder(_) => axum::http::StatusCode::BAD_REQUEST,
             Error::Internal => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
         };
 
