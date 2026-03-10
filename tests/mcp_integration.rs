@@ -9,10 +9,6 @@ use std::collections::HashMap;
 
 #[tokio::test]
 async fn test_mcp_server_integration() {
-    let _ = tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::DEBUG)
-        .try_init();
-
     // 从环境变量获取测试服务器路径，或使用默认路径
     let server_path = std::env::var("TEST_MCP_SERVER_PATH")
         .unwrap_or_else(|_| "./test-mcp-server.js".to_string());
@@ -97,10 +93,6 @@ async fn test_mcp_server_manager_basics() {
 #[tokio::test]
 async fn test_mcp_tool_call_integration() {
     // 测试工具调用功能
-    let _ = tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::DEBUG)
-        .try_init();
-
     let server_path = std::env::var("TEST_MCP_SERVER_PATH")
         .unwrap_or_else(|_| "./test-mcp-server.js".to_string());
 
